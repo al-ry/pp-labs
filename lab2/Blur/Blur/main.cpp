@@ -297,13 +297,14 @@ void blur_with_threads(int radius, Params* p)
 DWORD WINAPI ThreadProc(CONST LPVOID lpParam)
 {
     auto params = static_cast<Params *>(lpParam);
-    blur_with_threads(5, params);
+    blur_with_threads(6, params);
     ExitThread(0);
 }
 
-void ProcessThreads(bitmap* bmp, int threadsCount, int coreCount)
+void ProccesImageBlurWithThreads(bitmap* bmp, int threadsCount, int coreCount)
 {
     unsigned int lineW = bmp->getWidth() / threadsCount;
+    unsigned int lineH = bmp->getHeight() / threadsCount;
     unsigned int remainingPixels = bmp->getWidth() % threadsCount;
     Params* prm = new Params[threadsCount];
     for (size_t i = 0; i < threadsCount; i++)
@@ -342,13 +343,15 @@ void ProcessThreads(bitmap* bmp, int threadsCount, int coreCount)
 
 int main(int argc, const char* argv[])
 {
+
     auto start = high_resolution_clock::now();
-    bitmap bmp{ "source.bmp" };
-    ProcessThreads(&bmp, 10, 1);
-    bmp.save("out.bmp");
+    bitmap bmp{ argv[1] };
+    int threadsCount = std::stoi(argv[3]);
+    int coreCount = std::stoi(argv[4]);
+    ProccesImageBlurWithThreads(&bmp, threadsCount, coreCount);
+    bmp.save(argv[2]);
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
-
     std::cout << duration.count() << std::endl;
     return 0;
 }
