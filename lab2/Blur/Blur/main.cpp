@@ -215,6 +215,8 @@ struct Params
     uint32_t endW;
     uint32_t startH;
     uint32_t endH;
+    std::ofstream* out;
+    steady_clock::time_point start;
 };
 
 
@@ -290,6 +292,11 @@ void blur_with_threads(int radius, Params* p)
             pixel->r = std::round(r / count);
             pixel->g = std::round(g / count);
             pixel->b = std::round(b / count);
+
+            auto end = high_resolution_clock::now();
+            auto duration = duration_cast<milliseconds>(end - p->start);
+            std::string outStr = std::to_string(duration.count()) + "\n";
+            *p->out << outStr;
         }
     }
 }
@@ -297,22 +304,26 @@ void blur_with_threads(int radius, Params* p)
 DWORD WINAPI ThreadProc(CONST LPVOID lpParam)
 {
     auto params = static_cast<Params *>(lpParam);
-    blur_with_threads(6, params);
+    blur_with_threads(3, params);
     ExitThread(0);
 }
 
-void ProccesImageBlurWithThreads(bitmap* bmp, int threadsCount, int coreCount)
+void ProccesImageBlurWithThreads(bitmap* bmp, int threadsCount, int coreCount, steady_clock::time_point& start, int* threadsPriority)
 {
     unsigned int lineW = bmp->getWidth() / threadsCount;
     unsigned int lineH = bmp->getHeight() / threadsCount;
     unsigned int remainingPixels = bmp->getWidth() % threadsCount;
     Params* prm = new Params[threadsCount];
+    std::ofstream* outFiles = new std::ofstream[threadsCount];
     for (size_t i = 0; i < threadsCount; i++)
     {
         prm[i].bmp = bmp;
         prm[i].startH = 0;
         prm[i].endH = bmp->getHeight();
         prm[i].startW = lineW * i;
+        prm[i].start = start;
+        outFiles[i].open("out" + std::to_string(i) + ".txt");
+        prm[i].out = &outFiles[i];
         if (i == threadsCount - 1)
         {
             prm[i].endW = lineW * (i + 1) + remainingPixels;
@@ -328,6 +339,7 @@ void ProccesImageBlurWithThreads(bitmap* bmp, int threadsCount, int coreCount)
     for (int i = 0; i < threadsCount; i++)
     {
         handles[i] = CreateThread(NULL, i, &ThreadProc, &prm[i], CREATE_SUSPENDED, NULL);
+        SetThreadPriority(handles[i], threadsPriority[i]);
         SetThreadAffinityMask(handles[i], (1 << coreCount) - 1);
     }
 
@@ -338,20 +350,32 @@ void ProccesImageBlurWithThreads(bitmap* bmp, int threadsCount, int coreCount)
     WaitForMultipleObjects(threadsCount, handles, true, INFINITE);
 
     delete[] prm;
+    delete[] outFiles;
     delete[] handles;
+}
+
+void SetThreadsPriority(int* pArr, int p1, int p2, int p3)
+{
+    pArr[0] = THREAD_PRIORITY_ABOVE_NORMAL;
+    pArr[1] = THREAD_PRIORITY_NORMAL;
+    pArr[2] = THREAD_PRIORITY_BELOW_NORMAL;
 }
 
 int main(int argc, const char* argv[])
 {
-
     auto start = high_resolution_clock::now();
     bitmap bmp{ argv[1] };
     int threadsCount = std::stoi(argv[3]);
     int coreCount = std::stoi(argv[4]);
-    ProccesImageBlurWithThreads(&bmp, threadsCount, coreCount);
+    int* threadsPriority = new int[threadsCount];
+
+    SetThreadsPriority(threadsPriority, 1, 1, 1);
+    ProccesImageBlurWithThreads(&bmp, threadsCount, coreCount, start, threadsPriority);
     bmp.save(argv[2]);
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
     std::cout << duration.count() << std::endl;
+
+    delete[] threadsPriority;
     return 0;
 }
